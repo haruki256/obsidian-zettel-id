@@ -1,8 +1,161 @@
-/*
+/* ====== Tunables ====== */
+:root {
+	--zi-indent: 1.1rem;                 /* 1段分のインデント幅 */
+	--zi-row-font: 12.5px;               /* 行の文字サイズ（小さめ） */
+	--zi-row-pad-y: 2px;                 /* 行の上下余白（小さめ） */
+	--zi-row-pad-x: 6px;
+	--zi-radius: 6px;
+	--zi-guide: rgba(120,120,120,0.18);  /* 縦ガイド線の色（薄灰） */
+	--zi-toggle-size: 14px;              /* トグルの見た目サイズ */
+  }
+  
+  /* ====== コンテナ/ヘッダ ====== */
+  .zettel-view-container { display:flex; flex-direction:column; gap:10px; padding:8px 10px; }
+  .zettel-view-header { display:flex; align-items:center; justify-content:space-between; }
+  .zettel-view-controls { display:flex; gap:6px; }
 
-This CSS file will be included with your plugin, and
-available in the app when your plugin is enabled.
+/* アイコンボタン（ヘッダ） */
+.zettel-view-controls > button.zi-icon-btn {
+  padding: 4px;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--interactive-normal);
+}
+.zettel-view-controls > button.zi-icon-btn:hover { background: var(--interactive-hover); }
+.zettel-view-controls > button.zi-icon-btn.is-active { outline: 2px solid var(--interactive-accent); }
+  
+  .zettel-section > h2 { font-size:12px; letter-spacing:.02em; margin:6px 0 4px; }
+  
+  /* ====== Utilities ====== */
+  .clickable { cursor:pointer; user-select:none; }
+  .muted { opacity:.65; }
+  .is-hidden { display:none !important; }
+  
+  /* =========================================================
+	 ▼ 共通ベース: .zi-list / .zi-row / .zi-toggle / .zi-id / .zi-name / .zi-plus
+	 ========================================================= */
+  
+  /* リスト（共通） */
+  .zi-list { display:flex; flex-direction:column; gap:2px; }
+  
+  /* 行（共通） */
+  .zi-row {
+	display:flex; align-items:center; gap:6px;
+	padding:var(--zi-row-pad-y) var(--zi-row-pad-x);
+	font-size:var(--zi-row-font);
+	border-radius:var(--zi-radius);
+	position:relative; /* 縦ガイド用 */
+  }
+  .zi-row:hover { background:var(--background-modifier-hover); }
+  
+  /* インデント（共通：data-depth を利用） */
+  .zi-row[data-depth="0"]  { margin-left:0;                              --zi-depth:0; }
+.zi-row[data-depth="1"]  { margin-left:calc(1 * var(--zi-indent));     --zi-depth:1; }
+.zi-row[data-depth="2"]  { margin-left:calc(2 * var(--zi-indent));     --zi-depth:2; }
+.zi-row[data-depth="3"]  { margin-left:calc(3 * var(--zi-indent));     --zi-depth:3; }
+.zi-row[data-depth="4"]  { margin-left:calc(4 * var(--zi-indent));     --zi-depth:4; }
+.zi-row[data-depth="5"]  { margin-left:calc(5 * var(--zi-indent));     --zi-depth:5; }
+.zi-row[data-depth="6"]  { margin-left:calc(6 * var(--zi-indent));     --zi-depth:6; }
+.zi-row[data-depth="7"]  { margin-left:calc(7 * var(--zi-indent));     --zi-depth:7; }
+.zi-row[data-depth="8"]  { margin-left:calc(8 * var(--zi-indent));     --zi-depth:8; }
+.zi-row[data-depth="9"]  { margin-left:calc(9 * var(--zi-indent));     --zi-depth:9; }
+.zi-row[data-depth="10"] { margin-left:calc(10 * var(--zi-indent));    --zi-depth:10; }
 
-If your plugin does not need CSS, delete this file.
+.zi-row > * { position: relative; z-index: 1; }
 
-*/
+/* 祖先ぶん “|” を敷く（repeating-linear-gradient 方式） */
+.zi-row::before {
+  content: "";
+  position: absolute; top: 0; bottom: 0;
+  z-index: 0; pointer-events: none;
+  left: calc(-1 * var(--zi-depth) * var(--zi-indent));
+  width: calc(var(--zi-depth) * var(--zi-indent));
+  background-image: repeating-linear-gradient(
+    to right,
+    var(--zi-guide),
+    var(--zi-guide) 1px,
+    transparent 1px calc(var(--zi-indent))
+  );
+  /* “列の中心”に線が来るよう半インデント分ずらす */
+  background-position: calc(-.5 * var(--zi-indent)) 0;
+  opacity: .9;
+}
+
+/* depth=0 または未指定は線なし */
+.zi-row[data-depth="0"]::before,
+.zi-row:not([data-depth])::before { display: none; }
+  
+  /* トグル（共通：▶/▼ 風） */
+  .zi-toggle {
+	position:relative;
+	width:var(--zi-toggle-size); height:var(--zi-toggle-size);
+	flex:0 0 var(--zi-toggle-size);
+  }
+  .zi-toggle::before {
+	content:"";
+	position:absolute; inset:0; margin:auto;
+	width:6px; height:6px;
+	border-right: 2px solid color-mix(in srgb, var(--text-muted) 30%, transparent);
+	border-bottom: 2px solid color-mix(in srgb, var(--text-muted) 30%, transparent);
+	transform:rotate(-45deg);           /* ▶（閉） */
+	transition:transform .15s ease, border-color .15s ease;
+  }
+  .zi-toggle:hover::before { border-color: color-mix(in srgb, var(--text-normal) 60%, transparent); }
+  /* 展開時（▼） */
+  .zi-toggle[data-collapsed="false"]::before { transform:rotate(45deg); }
+  /* 子無しは小さな点に */
+  .zi-toggle[data-has-children="false"]::before {
+	width:4px; height:4px; border:none; background:var(--text-faint);
+	border-radius:50%; transform:none; opacity:.6;
+  }
+  
+/* 重複行用：トグルのダミー（スペーサ） */
+.zi-toggle-spacer::before {
+  width:4px; height:4px; border:none; background:transparent;
+}
+  /* テキスト（共通） */
+  .zi-id   { color: color-mix(in srgb, var(--text-faint) 50%, var(--text-normal)); }
+  .zi-name { color: color-mix(in srgb, var(--text-faint) 50%, var(--text-normal)); flex:1; }
+  
+  /* プラスボタン（共通） */
+  .zi-plus { margin-left:auto; font-weight:700; padding:0 4px; opacity:.75; }
+  .zi-plus:hover { opacity:1; }
+  
+  /* ハイライト（共通） */
+  .is-highlight { background: color-mix(in srgb, var(--background-modifier-border-hover) 55%, var(--background-primary)); }
+  .is-highlight .zi-name { color:var(--text-normal); font-weight:600; }
+  /* IDも少し濃くする（控えめ） */
+  .is-highlight .zi-id { color:var(--text-muted); opacity:0.9; }
+  
+  /* ホバー時の濃さ（共通） */
+  .zi-row:hover .zi-id { color:var(--text-muted); }
+  .zi-row:hover .zi-name { color:var(--text-normal); }
+  
+  /* =========================================================
+	 ▼ 差分（バリアント毎の見た目の違いだけここに書く）
+	 ========================================================= */
+  
+  /* zettel 側（必要な差分があればここに—現状なし） */
+  .zettel-list {}
+  .zettel-row {}
+  
+  /* no zettel 側の色味やホバー差分 */
+  .no-zettel-row { font-size:var(--zi-row-font); }
+  .no-zettel-row { color: color-mix(in srgb, var(--text-faint) 65%, var(--text-normal)); }
+  .no-zettel-row:hover { color:var(--text-normal); font-weight:500; }
+  .no-zettel-row.is-highlight { color:var(--text-normal); font-weight:600; }
+  
+
+/* 選択中（複数選択対応） */
+.zi-row.is-selected {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 0;
+	background: color-mix(in srgb, var(--background-modifier-border-hover) 65%, var(--background-primary));
+  }
+  .zi-row.is-selected .zi-name { color: var(--text-normal); font-weight: 600; }
+  .zi-row.is-selected .zi-id { color: var(--text-muted); opacity: 0.9; }
+  
