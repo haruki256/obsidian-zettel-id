@@ -20,9 +20,10 @@ import {
   export default class ZettelIdPlugin extends Plugin {
 	settings: ZettelIdPluginSettings;
 	private cachedTree: { root: ZettelNode } | null = null;
-  
+
 	private _exclusionChecker: ((path: string) => boolean) | null = null;
-  
+	private _inclusionChecker: ((path: string) => boolean) | null = null;
+
 	/** 設定に基づいて除外チェッカー関数を作成（またはキャッシュを返す） */
 	private getExclusionChecker(): (path: string) => boolean {
 	  if (this._exclusionChecker) {
@@ -58,7 +59,44 @@ import {
 	  this._exclusionChecker = checker;
 	  return checker;
 	}
-  
+
+	/** 設定に基づいて包含チェッカー関数を作成（またはキャッシュを返す） */
+	private getInclusionChecker(): (path: string) => boolean {
+	  if (this._inclusionChecker) {
+		return this._inclusionChecker;
+	  }
+
+	  const raw = this.settings.viewIncludePaths ?? [];
+	  const cleaned = raw
+		.map(s => s.trim().replace(/\\/g, '/'))
+		.filter(Boolean);
+
+	  // 空の場合は全て含める（常にtrueを返す）
+	  if (cleaned.length === 0) {
+		const alwaysTrue = () => true;
+		this._inclusionChecker = alwaysTrue;
+		return alwaysTrue;
+	  }
+
+	  const includeFolderPrefixes: string[] = [];
+
+	  for (const p of cleaned) {
+		const pref = p.endsWith('/') ? p : (p.length ? `${p}/` : p);
+		if (pref) includeFolderPrefixes.push(pref.toLowerCase()); // 小文字で保存
+	  }
+
+	  const checker = (path: string): boolean => {
+		const lowerPath = path.toLowerCase(); // 比較対象も小文字に
+		for (const pref of includeFolderPrefixes) {
+		  if (lowerPath.startsWith(pref)) return true;
+		}
+		return false;
+	  };
+
+	  this._inclusionChecker = checker;
+	  return checker;
+	}
+
 	async onload() {
 	  await this.loadSettings();
   
@@ -102,9 +140,13 @@ import {
 	async loadSettings() {
 	  this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
 	  this._exclusionChecker = null;
+	  this._inclusionChecker = null;
 	  // 後方互換：undefined の場合は空配列に
 	  if (!Array.isArray(this.settings.noZettelExcludePaths)) {
 		this.settings.noZettelExcludePaths = [];
+	  }
+	  if (!Array.isArray(this.settings.viewIncludePaths)) {
+		this.settings.viewIncludePaths = [];
 	  }
 	   // ▼ 後方互換：展開状態フィールドが未定義ならデフォルト補完
 	  if (typeof this.settings.zettelExpanded !== 'boolean')
@@ -116,6 +158,7 @@ import {
 	async saveSettings() {
 	  await this.saveData(this.settings);
 	  this._exclusionChecker = null;
+	  this._inclusionChecker = null;
 	  this.cachedTree = null;
 	  const viewLeaf = this.app.workspace.getLeavesOfType(ZettelIdView.VIEW_TYPE)[0];
 	  if (viewLeaf && viewLeaf.view instanceof ZettelIdView) viewLeaf.view.refresh();
@@ -142,23 +185,26 @@ import {
   
 	buildZettelTree(): { root: ZettelNode } {
 	  if (this.cachedTree) return this.cachedTree;
-  
+
 	  const root: ZettelNode = { id: '', segments: [], children: new Map(), files: [] };
 	  const files = this.app.vault.getMarkdownFiles();
-  
+
 	  // チェッカーを取得
 	  const isExcluded = this.getExclusionChecker();
-  
+	  const isIncluded = this.getInclusionChecker();
+
 	  for (const file of files) {
+		// 包含チェック（空の場合は全て含める）
+		if (!isIncluded(file.path)) continue;
 		// 除外チェック
 		if (isExcluded(file.path)) continue;
-  
+
 		const id = this.getZettelIdForFile(file);
 		if (!id) continue;
 		const segs = parseZettelId(id);
   
 		let parent = root;
-		let acc: string[] = [];
+		const acc: string[] = [];
 		segs.forEach((seg, idx) => {
 		  acc.push(seg);
 		  const curId = acc.join('.');
@@ -195,12 +241,14 @@ import {
 	/** 除外パス対応版：zettel_id 未設定ファイル一覧 */
 	getFilesWithoutZettel(): TFile[] {
 	  const files = this.app.vault.getMarkdownFiles();
-  
+
 	  // チェッカーを取得し、古いロジックを削除
 	  const isExcluded = this.getExclusionChecker();
-  
+	  const isIncluded = this.getInclusionChecker();
+
 	  const out: TFile[] = [];
 	  for (const f of files) {
+		if (!isIncluded(f.path)) continue; // 包含チェック
 		if (isExcluded(f.path)) continue; // 除外
 		const id = this.getZettelIdForFile(f);
 		if (!id) out.push(f);
@@ -243,7 +291,7 @@ import {
 	  }
   
 	  // 行単位で安全に書き換える（改行は \n に正規化）
-	  let fm = m[1]?.replace(/\r\n/g, '\n') ?? '';
+	  const fm = m[1]?.replace(/\r\n/g, '\n') ?? '';
 	  const body = (m[2] ?? '').replace(/\r\n/g, '\n');
   
 	  const lines = fm.split('\n');
@@ -382,7 +430,7 @@ import {
   
 		  // 2. 新しい親ID (newParentId) の型に基づいて、子の採番を開始 (A or 1)
 		  const parentLastSeg = parseZettelId(newParentId).pop() ?? '';
-		  let startAlpha = isNumeric(parentLastSeg);
+		  const startAlpha = isNumeric(parentLastSeg);
 		  let nextSeg = startAlpha ? 'a' : '1';
   
 		  for (const childNode of children) {
