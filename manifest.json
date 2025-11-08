@@ -1,11 +1,11 @@
 {
-	"id": "sample-plugin",
-	"name": "Sample Plugin",
+	"id": "obsidian-zettel-id",
+	"name": "Zettel Id",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
-	"description": "Demonstrates some of the capabilities of the Obsidian API.",
-	"author": "Obsidian",
-	"authorUrl": "https://obsidian.md",
-	"fundingUrl": "https://obsidian.md/pricing",
+	"description": "A plugin that helps manage and use Zettel IDs more easily in Obsidian.",
+	"author": "haruki256",
+	"authorUrl": "https://github.com/haruki256/obsidian-zettel-id",
+	"fundingUrl": "",
 	"isDesktopOnly": false
 }
