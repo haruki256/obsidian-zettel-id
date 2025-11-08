@@ -22,6 +22,8 @@ export interface ZettelIdPluginSettings {
    /** ▼ 新規追加：セクション展開状態の保存用 */
   zettelExpanded: boolean;      // zettel id セクションの開閉
   noZettelExpanded: boolean;    // no zettel id セクションの開閉
+  /** ビューに含めるフォルダパス（改行区切り）。空なら全て表示 */
+  viewIncludePaths: string[];
 }
 
 export const DEFAULT_SETTINGS: ZettelIdPluginSettings = {
@@ -34,6 +36,7 @@ export const DEFAULT_SETTINGS: ZettelIdPluginSettings = {
   noZettelExcludePaths: [],
   zettelExpanded: true,
   noZettelExpanded: false,
+  viewIncludePaths: [],
 };
 
 export interface ZettelNode {

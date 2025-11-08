@@ -97,5 +97,22 @@ export class ZettelSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         });
       });
+
+    // ビューに含めるフォルダパス（改行区切り）
+    new Setting(containerEl)
+      .setName('Include paths in view')
+      .setDesc('改行区切りで入力。指定したフォルダ配下のみビューに表示されます。空の場合は全て表示。例:\nZettels\nProjects')
+      .addTextArea((ta) => {
+        ta.setPlaceholder('Zettels\nProjects');
+        ta.setValue((this.plugin.settings.viewIncludePaths ?? []).join('\n'));
+        ta.onChange(async (value) => {
+          const lines = value
+            .split(/\r?\n/)
+            .map(s => s.trim())
+            .filter(Boolean);
+          this.plugin.settings.viewIncludePaths = lines;
+          await this.plugin.saveSettings();
+        });
+      });
   }
 }
