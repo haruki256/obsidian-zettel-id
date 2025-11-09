@@ -86,6 +86,24 @@ import {
 	  }
 	}
 	// ▲
+
+	// ▼ セグメントインクリメント（zettelUtils.ts のものと同じ）
+	private incrementSeg(seg: string): string {
+		if (/^\d+$/.test(seg)) return String(parseInt(seg, 10) + 1);
+		const isUpper = seg === seg.toUpperCase();
+		const letters = seg.toLowerCase().split('');
+		let carry = 1;
+		for (let i = letters.length - 1; i >= 0; i--) {
+			if (!carry) break;
+			const code = letters[i].charCodeAt(0) - 97 + carry;
+			letters[i] = String.fromCharCode((code % 26) + 97);
+			carry = Math.floor(code / 26);
+		}
+		if (carry > 0) letters.unshift(String.fromCharCode(96 + carry));
+		const out = letters.join('');
+		return isUpper ? out.toUpperCase() : out;
+	}
+	// ▲
   
 	// ▼ 削除対象収集（配下含む/含まない）
 	private collectDeleteTargets(includeSubtree: boolean, baseFiles: TFile[]): TFile[] {
@@ -519,6 +537,107 @@ import {
 						console.error(e);
 						new Notice('更新に失敗しました', 4000);
 					  }
+					});
+				});
+				// 2b) 配下を含めzettel_id を変更
+				menu.addItem((item) => {
+					item.setTitle('配下を含めzettel_id を変更')
+					.setIcon('edit-3')
+					.onClick(async () => {
+						const prop = this.plugin.settings.zettelIdProperty;
+						const cur = this.plugin.getZettelIdForFile(file) ?? '';
+						const modal = new TextInputModal(this.app, {
+							title: `${prop} を変更（配下を含む）`,
+							placeholder: '例: 1.a.2',
+							value: cur,
+						});
+						modal.open();
+						const newId = await modal.wait();
+						if (newId === null || newId.trim() === '') return;
+
+						// サブツリー変更のためのロジック
+						const tree = this.plugin.buildZettelTree();
+						const root = tree.root;
+						const idIndex = this.plugin.buildIdIndex(root);
+						const currentId = this.plugin.getZettelIdForFile(file);
+						if (!currentId) {
+							new Notice('現在のファイルにzettel_idが設定されていません', 4000);
+							return;
+						}
+
+						const sourceNode = idIndex.get(currentId);
+						if (!sourceNode) {
+							new Notice('ノードが見つかりませんでした', 4000);
+							return;
+						}
+
+						// 同じIDかチェック
+						if (newId === currentId) {
+							new Notice('同じIDです', 3000);
+							return;
+						}
+						// 自分の子孫への移動を防ぐ
+						if (newId.startsWith(currentId + '.')) {
+							new Notice('自分自身の子孫の下には移動できません', 3000);
+							return;
+						}
+
+						// 既存IDとの衝突チェック（移動元サブツリー以外）
+						const existing = new Set<string>();
+						const collectIds = (n: ZettelNode) => {
+							n.children.forEach((c) => { existing.add(c.id); collectIds(c); });
+						};
+						collectIds(root);
+						const sourceIds = this.plugin.listSubtreeIds(sourceNode);
+						
+						// 新しいIDが既存と衝突しないかチェック（移動元除く）
+						if (!sourceIds.includes(newId) && existing.has(newId)) {
+							new Notice('指定したIDは既に使用されています', 3000);
+							return;
+						}
+
+						// IDマッピングを構築
+						const remap = new Map<string, string>();
+						const buildRemap = (node: ZettelNode, newParentId: string) => {
+							// 親ノードのマッピングを追加
+							remap.set(node.id, newParentId);
+
+							// 子ノードを再帰的にマッピング
+							const children = Array.from(node.children.values());
+							const newParentSegs = parseZettelId(newParentId);
+							const lastSeg = newParentSegs[newParentSegs.length - 1] ?? '';
+							const startAlpha = /^\d+$/.test(lastSeg);
+							let nextSeg = startAlpha ? 'a' : '1';
+
+							for (const childNode of children) {
+								let newChildId: string;
+								// 衝突しないIDを探す
+								while (true) {
+									newChildId = newParentId ? `${newParentId}.${nextSeg}` : nextSeg;
+									// 移動元サブツリー以外と衝突しないかチェック
+									if (!sourceIds.includes(newChildId) && existing.has(newChildId)) {
+										nextSeg = this.incrementSeg(nextSeg);
+									} else {
+										break;
+									}
+								}
+								buildRemap(childNode, newChildId);
+								nextSeg = this.incrementSeg(nextSeg);
+							}
+						};
+
+						buildRemap(sourceNode, newId);
+
+						try {
+							await this.plugin.applyIdRemap(remap, prop, idIndex);
+							new Notice(`${prop} を配下含めて更新しました`);
+							this.plugin.invalidateCache();
+							await new Promise((r) => setTimeout(r, 200));
+							this.refresh();
+						} catch (e) {
+							console.error(e);
+							new Notice('更新に失敗しました', 4000);
+						}
 					});
 				});
 				// 3) 名前を変更
