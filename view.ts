@@ -86,24 +86,6 @@ import {
 	  }
 	}
 	// ▲
-
-	// ▼ セグメントインクリメント（zettelUtils.ts のものと同じ）
-	private incrementSeg(seg: string): string {
-		if (/^\d+$/.test(seg)) return String(parseInt(seg, 10) + 1);
-		const isUpper = seg === seg.toUpperCase();
-		const letters = seg.toLowerCase().split('');
-		let carry = 1;
-		for (let i = letters.length - 1; i >= 0; i--) {
-			if (!carry) break;
-			const code = letters[i].charCodeAt(0) - 97 + carry;
-			letters[i] = String.fromCharCode((code % 26) + 97);
-			carry = Math.floor(code / 26);
-		}
-		if (carry > 0) letters.unshift(String.fromCharCode(96 + carry));
-		const out = letters.join('');
-		return isUpper ? out.toUpperCase() : out;
-	}
-	// ▲
   
 	// ▼ 削除対象収集（配下含む/含まない）
 	private collectDeleteTargets(includeSubtree: boolean, baseFiles: TFile[]): TFile[] {
@@ -582,51 +564,12 @@ import {
 							return;
 						}
 
-						// 既存IDとの衝突チェック（移動元サブツリー以外）
-						const existing = new Set<string>();
-						const collectIds = (n: ZettelNode) => {
-							n.children.forEach((c) => { existing.add(c.id); collectIds(c); });
-						};
-						collectIds(root);
-						const sourceIds = this.plugin.listSubtreeIds(sourceNode);
-						
-						// 新しいIDが既存と衝突しないかチェック（移動元除く）
-						if (!sourceIds.includes(newId) && existing.has(newId)) {
+						// IDマッピングを計算（共通ロジックを使用）
+						const remap = this.plugin.computeIdRemapWithSpecificId(root, sourceNode, newId);
+						if (!remap) {
 							new Notice('指定したIDは既に使用されています', 3000);
 							return;
 						}
-
-						// IDマッピングを構築
-						const remap = new Map<string, string>();
-						const buildRemap = (node: ZettelNode, newParentId: string) => {
-							// 親ノードのマッピングを追加
-							remap.set(node.id, newParentId);
-
-							// 子ノードを再帰的にマッピング
-							const children = Array.from(node.children.values());
-							const newParentSegs = parseZettelId(newParentId);
-							const lastSeg = newParentSegs[newParentSegs.length - 1] ?? '';
-							const startAlpha = /^\d+$/.test(lastSeg);
-							let nextSeg = startAlpha ? 'a' : '1';
-
-							for (const childNode of children) {
-								let newChildId: string;
-								// 衝突しないIDを探す
-								while (true) {
-									newChildId = newParentId ? `${newParentId}.${nextSeg}` : nextSeg;
-									// 移動元サブツリー以外と衝突しないかチェック
-									if (!sourceIds.includes(newChildId) && existing.has(newChildId)) {
-										nextSeg = this.incrementSeg(nextSeg);
-									} else {
-										break;
-									}
-								}
-								buildRemap(childNode, newChildId);
-								nextSeg = this.incrementSeg(nextSeg);
-							}
-						};
-
-						buildRemap(sourceNode, newId);
 
 						try {
 							await this.plugin.applyIdRemap(remap, prop, idIndex);

@@ -483,6 +483,67 @@ import {
 	  }
 	  return null; // 500回試行してもダメだった
 	}
+
+	/** 指定された新しいルートIDでサブツリーのIDマッピングを作成（重複回避しつつ） */
+	computeIdRemapWithSpecificId(root: ZettelNode, sourceNode: ZettelNode, newRootId: string): Map<string,string> | null {
+		const existing = this.collectExistingIds(root);
+		const sourceIds = this.listSubtreeIds(sourceNode);
+
+		// 新しいIDが既存と衝突しないかチェック（移動元サブツリー以外）
+		if (!sourceIds.includes(newRootId) && existing.has(newRootId)) {
+			return null; // 衝突あり
+		}
+
+		const remap = new Map<string,string>();
+
+		// 再帰的にIDを再採番するロジック
+		const buildRemapRecursive = (node: ZettelNode, newParentId: string) => {
+			// 1. 処理対象のノードの子を、ソート順（ビューの表示順）で取得
+			const children = Array.from(node.children.values());
+
+			// 2. 新しい親ID (newParentId) の型に基づいて、子の採番を開始 (A or 1)
+			const parentLastSeg = parseZettelId(newParentId).pop() ?? '';
+			const startAlpha = isNumeric(parentLastSeg);
+			let nextSeg = startAlpha ? 'a' : '1';
+
+			for (const childNode of children) {
+				let newChildId: string;
+				
+				// 3. 衝突しないセグメントが見つかるまでループ
+				while (true) {
+					newChildId = newParentId ? `${newParentId}.${nextSeg}` : nextSeg;
+
+					// 衝突チェック：
+					// 移動元サブツリー「以外」の既存IDと衝突していないか？
+					if (!sourceIds.includes(newChildId) && existing.has(newChildId)) {
+						// 衝突した
+						nextSeg = incrementSegment(nextSeg);
+					} else {
+						// 衝突なし。このIDで確定
+						break;
+					}
+				}
+				
+				// 4. 確定したマッピングを保存
+				remap.set(childNode.id, newChildId);
+				
+				// 5. 孫ノードに対しても再帰的に実行
+				if (childNode.children.size > 0) {
+					buildRemapRecursive(childNode, newChildId);
+				}
+				
+				// 6. 次の「兄弟」のためのセグメントを用意
+				nextSeg = incrementSegment(nextSeg);
+			}
+		};
+
+		// ルートノードのマッピングを設定
+		remap.set(sourceNode.id, newRootId);
+		// このルートIDを親として、子の再採番を開始
+		buildRemapRecursive(sourceNode, newRootId);
+
+		return remap;
+	}
   
 	/** マッピングに基づいて frontmatter の zettel_id を一括更新 */
 	async applyIdRemap(remap: Map<string,string>, zprop: string, treeNodeById: Map<string,ZettelNode>) {
