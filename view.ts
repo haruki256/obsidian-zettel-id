@@ -521,6 +521,68 @@ import {
 					  }
 					});
 				});
+				// 2b) 配下を含めzettel_id を変更
+				menu.addItem((item) => {
+					item.setTitle('配下を含めzettel_id を変更')
+					.setIcon('edit-3')
+					.onClick(async () => {
+						const prop = this.plugin.settings.zettelIdProperty;
+						const cur = this.plugin.getZettelIdForFile(file) ?? '';
+						const modal = new TextInputModal(this.app, {
+							title: `${prop} を変更（配下を含む）`,
+							placeholder: '例: 1.a.2',
+							value: cur,
+						});
+						modal.open();
+						const newId = await modal.wait();
+						if (newId === null || newId.trim() === '') return;
+
+						// サブツリー変更のためのロジック
+						const tree = this.plugin.buildZettelTree();
+						const root = tree.root;
+						const idIndex = this.plugin.buildIdIndex(root);
+						const currentId = this.plugin.getZettelIdForFile(file);
+						if (!currentId) {
+							new Notice('現在のファイルにzettel_idが設定されていません', 4000);
+							return;
+						}
+
+						const sourceNode = idIndex.get(currentId);
+						if (!sourceNode) {
+							new Notice('ノードが見つかりませんでした', 4000);
+							return;
+						}
+
+						// 同じIDかチェック
+						if (newId === currentId) {
+							new Notice('同じIDです', 3000);
+							return;
+						}
+						// 自分の子孫への移動を防ぐ
+						if (newId.startsWith(currentId + '.')) {
+							new Notice('自分自身の子孫の下には移動できません', 3000);
+							return;
+						}
+
+						// IDマッピングを計算（共通ロジックを使用）
+						const remap = this.plugin.computeIdRemapWithSpecificId(root, sourceNode, newId);
+						if (!remap) {
+							new Notice('指定したIDは既に使用されています', 3000);
+							return;
+						}
+
+						try {
+							await this.plugin.applyIdRemap(remap, prop, idIndex);
+							new Notice(`${prop} を配下含めて更新しました`);
+							this.plugin.invalidateCache();
+							await new Promise((r) => setTimeout(r, 200));
+							this.refresh();
+						} catch (e) {
+							console.error(e);
+							new Notice('更新に失敗しました', 4000);
+						}
+					});
+				});
 				// 3) 名前を変更
 				menu.addItem((item) => {
 				  item.setTitle('名前を変更')
